@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cdtprojectproperties>
+<section name="org.eclipse.cdt.internal.ui.wizards.settingswizards.Macros">
+<language name="C++ Source File">
+<macro>
+<name>PJ_AUTOCONF</name><value>1</value>
+</macro>
+<macro>
+<name>DPJ_IS_BIG_ENDIAN</name><value>0</value>
+</macro>
+<macro>
+<name>PJ_IS_LITTLE_ENDIAN</name><value>1</value>
+</macro>
+
+</language>
+<language name="C Source File">
+<macro>
+<name>PJ_AUTOCONF</name><value>1</value>
+</macro>
+<macro>
+<name>DPJ_IS_BIG_ENDIAN</name><value>0</value>
+</macro>
+<macro>
+<name>PJ_IS_LITTLE_ENDIAN</name><value>1</value>
+</macro>
+
+</language>
+<language name="Object File">
+
+</language>
+<language name="Assembly Source File">
+
+</language>
+</section>
+</cdtprojectproperties>
