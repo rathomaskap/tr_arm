@@ -6,14 +6,7 @@
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
+ * (at your option) any later version.sip_ip2
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
  */
@@ -24,7 +17,7 @@
 #include <pjsip.h>
 #include <pjlib-util.h>
 #include <pjlib.h>
-#include "ioctl_netif.h"
+#include <ioctl_netif.h>
 
 /* Options */
 static struct global_struct
@@ -65,8 +58,10 @@ static void usage(void)
 	 " -L, --log-level N  Set log level to N (default: 4)\n"
      " -a  --src_net1      ip route to sip proxy\n"
      " -b  --src_net2      ip route to sip proxy\n"
-     " -x  --sip_ip1      ip1 sip proxy\n"
-     " -y  --sip_ip2      ip1 sip proxy\n"
+     " -x  --sip_ip1       ip1 sip proxy\n"
+     " -y  --sip_ip2       ip1 sip proxy\n"
+     " -m  --mask_ip1      net1 netmask\n"
+     " -n  --mask_ip2      net2 netmask\n"
 	 " -h, --help         Show this help screen\n"
 	 );
 }
@@ -86,6 +81,8 @@ static pj_status_t init_options(int argc, char *argv[])
 	{ "src_net2",	1, 0, 'b'},
 	{ "sip_ip1",	1, 0, 'x'},
 	{ "sip_ip2",	1, 0, 'y'},
+	{ "mask_ip1",	1, 0, 'm'},
+	{ "mask_ip2",	1, 0, 'n'},
 	{ "help",	0, 0, 'h'},
 	{ NULL,		0, 0, 0}
     };
@@ -93,7 +90,7 @@ static pj_status_t init_options(int argc, char *argv[])
     int opt_ind;
 
     pj_optind = 0;
-    while((c=pj_getopt_long(argc, argv, "p:RL:a:b:x:y:h", long_opt, &opt_ind))!=-1) {
+    while((c=pj_getopt_long(argc, argv, "p:RL:a:b:x:y:m:n:h", long_opt, &opt_ind))!=-1) {
 
   	printf("c=%c\n",c);
 
@@ -142,6 +139,19 @@ static pj_status_t init_options(int argc, char *argv[])
 		dnat_sip_proxy.sip_ip2 = (unsigned int) inp.s_addr;
 		if(!ret) return PJ_FALSE;
 	    break;
+	case 'm':   // netmask net 1
+		cp = pj_str(pj_optarg);
+		ret =  pj_inet_aton	(&cp,&inp);
+		dnat_sip_proxy.netmask_ip1 = (unsigned int) inp.s_addr;
+		if(!ret) return PJ_FALSE;
+	    break;
+	case 'n':   // netmask net 2netmask_ip2d int) inp.s_addr;
+		cp = pj_str(pj_optarg);
+		ret =  pj_inet_aton	(&cp,&inp);
+		dnat_sip_proxy.netmask_ip2 = (unsigned int) inp.s_addr;
+		if(!ret) return PJ_FALSE;
+	    break;
+
 	case 'h':
 	    usage();
 	    return -1;

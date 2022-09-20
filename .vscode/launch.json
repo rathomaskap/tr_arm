@@ -1,0 +1,39 @@
+
+{
+    // Verwendet IntelliSense zum Ermitteln möglicher Attribute.
+    // Zeigen Sie auf vorhandene Attribute, um die zugehörigen Beschreibungen anzuzeigen.
+    // Weitere Informationen finden Sie unter https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "tr_arm2 Launch", 
+            "type": "cppdbg", 
+            "request": "launch",
+            "MIMode": "gdb",  
+            "miDebuggerPath": "/home/rainer/buildroot/buildroot-2018.08.2/output/host/bin/arm-buildroot-linux-gnueabihf-gdb",
+            "symbolSearchPath" : "/home/rainer/buildroot/buildroot-2018.08.2/output/target/usr/lib;/home/rainer/buildroot/buildroot-2018.08.2/output/target/lib",
+
+
+            "cwd": "${workspaceRoot}",
+            "program": "${workspaceRoot}/build/tr_arm2",
+            "remote": { 
+                "enabled": true,
+                "address": "10.1.1.50:2345",
+                "mode": "remote",
+                },
+            "stopAtEntry": true,
+            "environment": [],
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+                } 
+            ],
+
+        }   
+    ]
+}
+
+

@@ -606,7 +606,7 @@ int main(int argc, char *argv[])
 
 
     global.send_config = PJ_FALSE;
-    printf("tr_arm Version 2.0\n");
+    printf("tr_arm2 Version 1.0\n");
 	dz_net = open(devnet,O_RDWR);
 	memset(&dnat_sip_proxy,0,sizeof(dnat_sip_proxy));
 
@@ -653,7 +653,9 @@ int main(int argc, char *argv[])
     if (status != PJ_SUCCESS)
 	return 1;
 
-   printf("src_net1=");
+
+
+/*
    print_ip(htonl(dnat_sip_proxy.src_net1));
 //   printf("srcip=%X\n",dnat_sip_proxy.src_net1);
    if(dnat_sip_proxy.src_net1&0xff000000){
@@ -670,14 +672,72 @@ int main(int argc, char *argv[])
 	   ip2string(buffer,htonl(dnat_sip_proxy.src_net2));
 	   printf("Adresse src_net2 auf %s geaendert\n",buffer);
    }
+*/
+
+   printf("src_net1= %X ",dnat_sip_proxy.src_net1);
+   print_ip(htonl(dnat_sip_proxy.src_net1));
+   printf(" srcip1=%X\n",dnat_sip_proxy.sip_ip1);
+
+   printf("netmask ip1=");
+   print_ip(htonl(dnat_sip_proxy.netmask_ip1));
+   printf("  %X\n",dnat_sip_proxy.netmask_ip2);
+
+   printf("src_net2= %X ",dnat_sip_proxy.src_net2);
+   print_ip(htonl(dnat_sip_proxy.src_net2));
+   printf(" srcip2=%X\n",dnat_sip_proxy.sip_ip2);
+
+   printf("netmask ip2=");
+   print_ip(htonl(dnat_sip_proxy.netmask_ip2));
+   printf("  %X\n",dnat_sip_proxy.netmask_ip2);
 
 
+
+
+//    if(dnat_sip_proxy.src_net1&0xff000000){
+// 	   dnat_sip_proxy.src_net1 &=0x00ffffff; 
+// 	   ip2string(buffer,htonl(dnat_sip_proxy.src_net1));
+// 	   printf("Adresse src_net1 auf %s geaendert\n",buffer);
+//    }
+
+   if(htonl(dnat_sip_proxy.src_net1) & ~htonl(dnat_sip_proxy.netmask_ip1)) {
+
+	   printf("netaddr1 %X netmask1 %X \n", htonl(dnat_sip_proxy.src_net1), ~htonl(dnat_sip_proxy.netmask_ip1));
+
+	   unsigned tmp = htonl(dnat_sip_proxy.src_net1) & htonl(dnat_sip_proxy.netmask_ip1);
+	   dnat_sip_proxy.src_net1 = htonl(tmp);
+	   ip2string(buffer,htonl(dnat_sip_proxy.src_net1));
+	   printf("Adresse src_net1 auf %s geaendert\n",buffer);
+   }
+   
+
+
+   printf("src_net2=");
+   print_ip(htonl(dnat_sip_proxy.src_net2));
+
+//    if(dnat_sip_proxy.src_net2&0xff000000){
+// 	   dnat_sip_proxy.src_net2 &=0x00ffffff;
+// 	   ip2string(buffer,htonl(dnat_sip_proxy.src_net2));
+// 	   printf("Adresse src_net2 auf %s geaendert\n",buffer);
+//    }
+
+
+   if(htonl(dnat_sip_proxy.src_net2) & ~htonl(dnat_sip_proxy.netmask_ip2)) {
+
+	   printf("netaddr2 %X netmask2 %X \n", htonl(dnat_sip_proxy.src_net2), ~htonl(dnat_sip_proxy.netmask_ip2));
+
+	   unsigned tmp = htonl(dnat_sip_proxy.src_net2) & htonl(dnat_sip_proxy.netmask_ip2);
+	   dnat_sip_proxy.src_net2 = htonl(tmp);
+	   ip2string(buffer,htonl(dnat_sip_proxy.src_net2));
+	   printf("Adresse src_net2 auf %s geaendert\n",buffer);
+   }
+
+//	getchar();
 
    printf("sip_ip1=");
    print_ip(htonl(dnat_sip_proxy.sip_ip1));
 
    printf("sip_ip2=");
-   print_ip(htonl(dnat_sip_proxy.sip_ip2));
+   print_ip(htonl(dnat_sip_proxy.sip_ip2)); 
 
    ret =  ioctl_set_sip_proxy_addr(dz_net,&dnat_sip_proxy);
    if(ret) {

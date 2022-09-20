@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "ioctl_netif.h": "c",
+        "pjlib.h": "c"
+    }
+}

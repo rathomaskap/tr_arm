@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/rainer/buildroot/buildroot-2018.08.2/output/build/linux-4.17.19/arch/arm/include/**",
+                "/home/rainer/buildroot/buildroot-2018.08.2/output/staging/usr/include/**" 
+
+            ],
+            "defines": [],
+            "compilerPath": "/home/rainer/buildroot/buildroot-2018.08.2/output/host/bin/arm-linux-g++",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "gcc-arm",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "configurationProvider": "go2sh.cmake-integration"
+        }
+    ],
+    "version": 4
+}
