@@ -18,7 +18,8 @@
 #include "ioctl_netif.h"
 
 // bei <string.h> wird das include file von pjsip eingebunden
-#include "/home/rainer/work/buildroot-2018.08.2/output/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/string.h"
+// #include "/home/rainer/work/buildroot-2018.08.2/output/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/string.h"
+#include <string.h>
 
 
 char *error[] =

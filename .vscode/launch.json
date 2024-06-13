@@ -10,15 +10,15 @@
             "type": "cppdbg", 
             "request": "launch",
             "MIMode": "gdb",  
-            "miDebuggerPath": "/home/rainer/buildroot/buildroot-2018.08.2/output/host/bin/arm-buildroot-linux-gnueabihf-gdb",
-            "symbolSearchPath" : "/home/rainer/buildroot/buildroot-2018.08.2/output/target/usr/lib;/home/rainer/buildroot/buildroot-2018.08.2/output/target/lib",
+            "miDebuggerPath": "/home/rainer/buildroot/buildroot-2022.02.7/output/host/bin/arm-buildroot-linux-gnueabihf-gdb",
+            "symbolSearchPath" : "/home/rainer/buildroot/buildroot-2022.02.7/output/target/usr/lib;/home/rainer/buildroot/buildroot-2022.02.7/output/target/lib",
 
 
             "cwd": "${workspaceRoot}",
             "program": "${workspaceRoot}/build/tr_arm2",
             "remote": { 
                 "enabled": true,
-                "address": "10.1.1.50:2345",
+                "address": "192.168.1.201:2345",
                 "mode": "remote",
                 },
             "stopAtEntry": true,

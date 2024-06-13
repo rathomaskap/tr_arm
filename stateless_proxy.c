@@ -38,7 +38,8 @@
 #include <signal.h>
 
 #include "proxy_iocl.h"
-#include "/home/rainer/work/buildroot-2018.08.2/output/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/string.h"
+// #include "/home/rainer/work/buildroot-2018.08.2/output/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/string.h"
+#include <string.h>
 
 
 extern struct t_config  *sp;
