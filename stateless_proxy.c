@@ -38,9 +38,9 @@
 #include <signal.h>
 
 #include "proxy_iocl.h"
-// #include "/home/rainer/work/buildroot-2018.08.2/output/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/string.h"
 #include <string.h>
 
+#define GUI_VERSION
 
 extern struct t_config  *sp;
 extern struct trace_config_t tc;
@@ -75,7 +75,7 @@ struct dnat_sip_proxy_h  dnat_sip_proxy;
 
 
 /*
- * Ein Verbindungsaufbau beginnt mit der Invite Meldung. In dieser Meldung steht im SDP unter Media Port die Portnummer des rufenden.
+ * Ein Verbindungsaufbau beginnt mit der Invite Meldung. In dieser Meldung steht im SDP unter Media Port die Portnummer des Rufenden.
  * Die TRY Meldung wird nicht ausgewertet.
  * In der OK Response (200) steht die Port Nummer des gerufenen
  * Die Acknowledge Meldung schliesst den Dialog ab.
@@ -92,15 +92,15 @@ enum call_state_t  {CS_IDLE=1,CS_INVITE,CS_TRYING,CS_OK};
 #define MAX_STR_CALL 200
 struct ed137_call_t
 {
-	PJ_DECL_LIST_MEMBER(struct ed137_call_t); // pjlib/include/pj/list.h
-	unsigned int index;				// wird bei jedem call incrementiert
-	char call_id[MAX_STR_CALL];				//
+	PJ_DECL_LIST_MEMBER(struct ed137_call_t); 		// pjlib/include/pj/list.h
+	unsigned int index;								// wird bei jedem call incrementiert
+	char call_id[MAX_STR_CALL];						//
 	unsigned short src_port;
 	unsigned short des_port;
 	pj_in_addr src_ip;
 	pj_in_addr des_ip;
-	enum call_state_t state;			// invite,
-	char 	user[MAX_STR_CALL];				// User des Calls
+	enum call_state_t state;						// invite,
+	char 	user[MAX_STR_CALL];						// User des Calls
 
 };
 
@@ -118,6 +118,14 @@ int get_lowest_callid(struct ed137_call_t *call);
 
 
 // int cmp_call_list(void *value, const struct ed137_call_t *node)
+/**
+ * @brief Vergleicht 
+ * 
+ * @param value 		String 1
+ * @param base_node 	Struktur, die ein Listenelement sein kann
+ * @return int 			0 gleich , !0 ungleich	
+ */
+
 
 int cmp_call_list(void *value, const pj_list_type *base_node)
 {
@@ -597,7 +605,7 @@ static pj_bool_t on_rx_response( pjsip_rx_data *rdata )
 int dz_net;
 struct sigaction sa;
 
-int main(int argc, char *argv[])
+int main_old(int argc, char *argv[])
 {
     pj_status_t status;
     int ret;
@@ -607,10 +615,12 @@ int main(int argc, char *argv[])
 
 
     global.send_config = PJ_FALSE;
-    printf("tr_arm2 Version 1.0\n");
+    printf("tr_arm2 Version 2.0 GUI\n");
 	dz_net = open(devnet,O_RDWR);
 	memset(&dnat_sip_proxy,0,sizeof(dnat_sip_proxy));
 
+
+	// Signal SIGUSER1 setzt die Variable global.send_config
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
 	sigaddset(&sa.sa_mask, SIGUSR1);
@@ -640,12 +650,10 @@ int main(int argc, char *argv[])
     		printf("error: set_trace_config\n");
     	}
 
+    } else {
+		// Keine Optionen angegeben, die Optionen muessen aus der Datei ipConfiguration.json gelesen werden
 
-
-
-    }
-//	printf("loesche alle Firewall NAT regeln\n");
-//	system("iptables -t nat -F"); // alle Firewall Regeln loeschen
+	}
 
     global.port = 5060;
     pj_log_set_level(4);
@@ -656,24 +664,6 @@ int main(int argc, char *argv[])
 
 
 
-/*
-   print_ip(htonl(dnat_sip_proxy.src_net1));
-//   printf("srcip=%X\n",dnat_sip_proxy.src_net1);
-   if(dnat_sip_proxy.src_net1&0xff000000){
-	   dnat_sip_proxy.src_net1 &=0x00ffffff;
-	   ip2string(buffer,htonl(dnat_sip_proxy.src_net1));
-	   printf("Adresse src_net1 auf %s geaendert\n",buffer);
-   }
-
-   printf("src_net2=");
-   print_ip(htonl(dnat_sip_proxy.src_net2));
-
-   if(dnat_sip_proxy.src_net2&0xff000000){
-	   dnat_sip_proxy.src_net2 &=0x00ffffff;
-	   ip2string(buffer,htonl(dnat_sip_proxy.src_net2));
-	   printf("Adresse src_net2 auf %s geaendert\n",buffer);
-   }
-*/
 
    printf("src_net1= %X ",dnat_sip_proxy.src_net1);
    print_ip(htonl(dnat_sip_proxy.src_net1));
@@ -693,12 +683,6 @@ int main(int argc, char *argv[])
 
 
 
-
-//    if(dnat_sip_proxy.src_net1&0xff000000){
-// 	   dnat_sip_proxy.src_net1 &=0x00ffffff; 
-// 	   ip2string(buffer,htonl(dnat_sip_proxy.src_net1));
-// 	   printf("Adresse src_net1 auf %s geaendert\n",buffer);
-//    }
 
    if(htonl(dnat_sip_proxy.src_net1) & ~htonl(dnat_sip_proxy.netmask_ip1)) {
 

@@ -1,5 +1,5 @@
 /*
- * main.cc
+ * myconfig.c
  *
  *  Created on: 20.05.2019
  *      Author: rainer
