@@ -21,11 +21,20 @@ string       str;
 try{
 
 for(auto it: j.at("dl")) {
+
+        it.at("id").get_to(dlTmp.id);
+    
         it.at("autoRepeat").get_to(str);
         dlTmp.autoRepeat = (str=="on") ? true : false;
 
         it.at("direction").get_to(str);
-        dlTmp.autoRepeat = (str=="to_uas") ? true : false;
+        dlTmp.direction = (str=="to_uas") ? true : false;
+
+        it.at("userpart").get_to(dlTmp.userpart);
+
+        it.at("r2sDelay").get_to(str);
+        dlTmp.r2sDelay = (str=="on") ? true : false;
+
 
         delayGroup dgon; 
 
@@ -44,7 +53,6 @@ for(auto it: j.at("dl")) {
                     if(s=="drop") dl.value=128;
                     else if(s=="off") dl.value=64;
                     else dl.value=stoi(s);
-                    dgon.dl.push_back(dl);
                 }
             dgon.dl.push_back(dl);
         }
@@ -68,7 +76,6 @@ for(auto it: j.at("dl")) {
                     if(s=="drop") dl.value=128;
                     else if(s=="off") dl.value=64;
                     else dl.value=stoi(s);
-                    dgon.dl.push_back(dl);
                 }
             dgoff.dl.push_back(dl);
         }
@@ -90,8 +97,10 @@ void printDelayLine ( vector <delayLineParam> &dlp ) {
     for(auto ixdlp : dlp)
         {
             iprint(LOG_INFO,"-id:         %d\n",ixdlp.id);
+            iprint(LOG_INFO,"-userpart:   %s\n",ixdlp.userpart.c_str());
             iprint(LOG_INFO,"-autoRepeat: %d\n",ixdlp.autoRepeat);
             iprint(LOG_INFO,"-direction:  %d\n",ixdlp.direction);
+            iprint(LOG_INFO,"-r2sDelay:   %d\n",ixdlp.r2sDelay);
 
 
             for(auto ixdg : ixdlp.dgOn) {

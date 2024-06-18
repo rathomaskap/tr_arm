@@ -6,21 +6,16 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "tr_arm2 Launch", 
+            "name": "tr_arm3 Launch", 
             "type": "cppdbg", 
             "request": "launch",
             "MIMode": "gdb",  
+            "preLaunchTask": "run",
+            "miDebuggerServerAddress": "192.168.1.201:2345",
             "miDebuggerPath": "/home/rainer/buildroot/buildroot-2022.02.7/output/host/bin/arm-buildroot-linux-gnueabihf-gdb",
-            "symbolSearchPath" : "/home/rainer/buildroot/buildroot-2022.02.7/output/target/usr/lib;/home/rainer/buildroot/buildroot-2022.02.7/output/target/lib",
-
 
             "cwd": "${workspaceRoot}",
-            "program": "${workspaceRoot}/build/tr_arm2",
-            "remote": { 
-                "enabled": true,
-                "address": "192.168.1.201:2345",
-                "mode": "remote",
-                },
+            "program": "${workspaceRoot}/build/tr_arm3",
             "stopAtEntry": true,
             "environment": [],
             "externalConsole": false,
