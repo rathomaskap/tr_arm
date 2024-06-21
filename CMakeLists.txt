@@ -19,7 +19,7 @@ include_directories(${linuxIncPath}
 ) 
 
 
-add_executable(tr_arm3 alt_pjsua_aud.c ioctl_netif.c pvmain.cpp delayline.cpp)
+add_executable(tr_arm3 alt_pjsua_aud.c ioctl_netif.c pvmain.cpp delayline.cpp ipconfiguration.cpp)
 
 target_link_libraries(tr_arm3 pthread ssl crypto rt m pj pjmedia-codec pjmedia pjsip pjsip-ua pjsip-simple pjsua2 pjmedia-audiodev pjsua pjlib-util pjnath config -lsioclient)
 

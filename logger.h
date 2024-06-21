@@ -1,3 +1,3 @@
 #include <syslog.h>
 
-#define iprint(level, ...) syslog(level & 0xFFFF, __VA_ARGS__)
+#define iprint(level, ...) syslog(level, __VA_ARGS__)

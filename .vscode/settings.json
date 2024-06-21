@@ -63,6 +63,7 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "proxy.h": "c"
+        "proxy.h": "c",
+        "proxy_iocl.h": "c"
     }
 }

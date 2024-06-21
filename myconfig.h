@@ -11,11 +11,13 @@
 
 #define ARRAY_SIZE_DELAY_CHAIN 1024
 
+
+/*
+
+
 #define MAX_STRING_CONFIG	40
 #define MAX_STRING_DELAYLINE 400
-
 int readConfig(char *argv);
-
 struct arrayData_t {
 	int array[ARRAY_SIZE_DELAY_CHAIN];
 	int index;
@@ -40,6 +42,9 @@ struct session_desc_t {
 
 };
 
+
+
+
 struct t_config {
 int count;
 int delaychain[64];
@@ -47,6 +52,6 @@ int change_delay;  // 0 = false
 struct session_desc_t *sessionParam;
 };
 
-
+*/
 
 #endif /* MYCONFIG_H_ */

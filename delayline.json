@@ -1,0 +1,97 @@
+{
+    "dl": [
+        {
+            "autoRepeat": "on",
+            "direction": "to_uas",
+            "id": 1,
+            "offDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 4,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "onDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 0,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "r2sDelay": "on",
+            "userpart": "Hallo World"
+        },
+        {
+            "autoRepeat": "on",
+            "direction": "to_uas",
+            "id": 2,
+            "offDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 0,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "onDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 0,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "r2sDelay": "on",
+            "userpart": "SIP:"
+        },
+        {
+            "autoRepeat": "on",
+            "direction": "to_uas",
+            "id": 3,
+            "offDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 0,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "onDelay": [
+                {
+                    "delay": [
+                        {
+                            "id": 0,
+                            "value": "0"
+                        }
+                    ],
+                    "id": 1,
+                    "rep": 1
+                }
+            ],
+            "r2sDelay": "on",
+            "userpart": "SIP:"
+        }
+    ]
+}

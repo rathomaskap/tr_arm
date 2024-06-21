@@ -10,7 +10,6 @@
  */
 
 #define THIS_FILE "pvmain.cpp"
-
 #include <iostream>
 #include <fstream>
 #include <ostream>
@@ -65,6 +64,9 @@
 #include <json.hpp>
 #include "logger.h"
 #include "delayline.h"
+#include "ipconfiguration.h"
+#include <vector>
+#include <map>
 
 using namespace std;
 using namespace sio;
@@ -82,17 +84,30 @@ LOG_NOTICE              normal, but significant, condition
 LOG_INFO
 */
 
+// copiert einen pj_str in einen c++ string
 
+string pj_str2string(pj_str_t &p)
+{
+    string s = string(p.ptr,0,p.slen);
+    // iprint(LOG_INFO,"pj_str2string: %s\n",s.c_str());
+    
+    return s;
+}
 
 char devnet[] = "/dev/devNet";
 char strout[1000];
 
-// FIXME:
-//  extern struct t_config *sp;
+// struct t_callsDetected
+// {
+//     int id; // ID des Calls, es wird immer die niedrigste Gesucht und diese id entspricht dem Pin des GPIO
+//     string srcUri;
+//     string dstUri;
+//     string user;
+//     bool foundInDelayline; // es gibt einen Delayline Eintrag
+//     int delayLineId;       // Verweis auf die ID im Vector delayLine, nur gueltig wenn foundInDelayline true ist
+// };
 
-struct t_config *sp;
-
-struct dnat_sip_proxy_h dnat_sip_proxy; // Umleitung der SIP Pakete auf den Proxy
+// vector<t_callsDetected> allCalls;
 
 #define MAX_STR_CALL 200 // maximale Laenge des SIP Strings
 enum call_state_t
@@ -105,34 +120,44 @@ enum call_state_t
 
 struct ed137_call_t
 {
-    PJ_DECL_LIST_MEMBER(struct ed137_call_t); // pjlib/include/pj/list.h
-    unsigned int index;                       // wird bei jedem call incrementiert
-    char call_id[MAX_STR_CALL];               //
+    unsigned int id;
+    string call_id;
     unsigned short src_port;
     unsigned short des_port;
+
     pj_in_addr src_ip;
     pj_in_addr des_ip;
+
     enum call_state_t state; // invite,
-    char user[MAX_STR_CALL]; // User des Calls
+
+    string user;
+    string dstUri;
+    string srcUri;
+    bool delayLineFound;    // true, wenn es zur Session einen passenden delay Line Eintrag gibt
 };
-struct ed137_call_t call_list; // verkettete Liste aller aktiven Calls
+
+map<string, ed137_call_t> allCalls;
+
 /*********************************************************************
  * Prototypen
  ********************************************************************/
-int cmp_call_user(struct ed137_call_t *call, struct t_config *sp);
-int send_call_data(struct ed137_call_t *call, struct t_config *sp, int index, int ioctl_id);
+int cmp_call_user(ed137_call_t &call);
+int send_call_data(ed137_call_t &call, int ioctl_id);
 void print_ip(unsigned int ip);
 void ip2string(char *buffer, unsigned int ip);
-int delete_call_data(struct ed137_call_t *call, struct t_config *sp, int index);
-int get_lowest_callid(struct ed137_call_t *call);
+int delete_call_data(ed137_call_t &call);
+int get_lowest_callid();
+bool userInDlp(struct ed137_call_t &call);
 
 static pj_bool_t on_rx_request(pjsip_rx_data *rdata);  // Callback to be called to handle incoming requests.
 static pj_bool_t on_rx_response(pjsip_rx_data *rdata); // Callback to be called to handle incoming response.
 
-void print_call_info(struct ed137_call_t *call);
-void print_call_list(struct ed137_call_t *call);
+void print_call_info(ed137_call_t &call);
+void print_call_list();
 static pj_status_t init_stateless_proxy(void);
+
 void ev_activate_config(event &event);
+void ev_ipConfiguration(event &event);
 void ev_delayLine(event &event);
 
 /*********************************************************************
@@ -148,7 +173,6 @@ bool connect_finish = false;
 socket::ptr current_socket;
 
 vector<ns_dl::delayLineParam> dlp;
-
 
 int limitCidLen(int len)
 {
@@ -193,7 +217,7 @@ public:
 int main(int argc, char *argv[])
 {
     int ret;
-    pj_status_t status; 
+    pj_status_t status;
 
     openlog("pv", LOG_NDELAY, LOG_LOCAL6);
 
@@ -205,13 +229,15 @@ int main(int argc, char *argv[])
         iprint(LOG_ERR, "error: open device devnet\n");
     }
 
+    global.port = 5060;
+    pj_log_set_level(4);
+
     status = init_stack();
-    if (status != PJ_SUCCESS) {
-	iprint(LOG_ERR,"Error initializing stack %d", status);
-	return 1;
+    if (status != PJ_SUCCESS)
+    {
+        iprint(LOG_ERR, "Error initializing stack %d", status);
+        return 1;
     }
-
-
 
     status = init_proxy();
     if (status != PJ_SUCCESS)
@@ -226,8 +252,6 @@ int main(int argc, char *argv[])
         iprint(LOG_ERR, "Error initializing stateless proxy %d", status);
         return 1;
     }
-
-    pj_list_init(&call_list);
 
 #if PJ_HAS_THREADS
     status = pj_thread_create(global.pool, "sproxy", &worker_thread,
@@ -267,33 +291,16 @@ int main(int argc, char *argv[])
     current_socket->on("sessions", ev_activate_config);
     current_socket->on("reset", ev_activate_config);
     current_socket->on("delayline", ev_delayLine);
-    current_socket->on("ipConfiguration", ev_activate_config);
+    current_socket->on("ipConfiguration", ev_ipConfiguration);
+
+    for (;;)
+    {
+        sleep(1);
+    }
 
     pj_thread_join(global.thread);
     destroy_stack();
     return 0;
-}
-
-/**
- * @brief Vergleicht Value
- *
- * @param value 		String 1
- * @param base_node 	Struktur, die ein Listenelement sein kann
- * @return int 			0 gleich , !0 ungleich
- */
-
-int cmp_call_list(void *value, const pj_list_type *base_node)
-{
-    const struct ed137_call_t *node;
-
-    node = (struct ed137_call_t *)base_node;
-
-    char *call_id = (char *)value;
-    int len1 = strlen(call_id);
-    int len2 = strlen(node->call_id);
-    if (len1 != len2)
-        return 1; // nicht gleich, da Laenge unterschiedlich
-    return strcmp(call_id, node->call_id);
 }
 
 static pj_status_t init_stateless_proxy(void)
@@ -339,10 +346,6 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
     pjsip_uri *uri;
     pjsip_sip_uri *sip_uri;
     pjsip_contact_hdr *contact_hdr;
-    struct ed137_call_t *new_call;
-    char call_id[MAX_STR_CALL];
-    int len;
-    struct ed137_call_t *call;
 
     char *sdpData; // SDP Buffer fuer pjmedia_sdp_parse
 
@@ -363,8 +366,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
         PJSIP_OPTIONS_METHOD,
     */
 
-    iprint(LOG_INFO, "Type ID=%d\n", rdata->msg_info.msg->type); // Ausgabe des Meldungstyps
-    iprint(LOG_INFO, "ID=%d\n %s\n", rdata->msg_info.msg->line.req.method.id, rdata->msg_info.msg->line.req.method.name.ptr);
+    iprint(LOG_INFO, "request Type ID: %d  METHODE: %s\n", rdata->msg_info.msg->line.req.method.id, pj_str2string(rdata->msg_info.msg->line.req.method.name).c_str());
 
     /*
      * Es wird angenommen, dass die URI des Gerufenen im request header und die des Rufenden im contact header steht
@@ -384,6 +386,12 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
             if (sdp->media_count == 1)
             {
 
+
+
+
+
+
+
                 uri = (pjsip_uri *)pjsip_uri_get_uri(rdata->msg_info.msg->line.req.uri);
 
                 /* nur SIP/SIPS schemes */
@@ -391,54 +399,41 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                 {
 
                     sip_uri = (pjsip_sip_uri *)uri;
-                    // Ermittle den User des Gerufenen
 
-                    snprintf(strout, sip_uri->user.slen + 1, "%s", sip_uri->user.ptr);
-                    iprint(LOG_INFO, "Destination User: %s ", strout);
+
                     // Ist die invite Meldung ein neuer call oder ein reinvite?
 
-                    // Kompiere die Call id des Calls nach call_id
-
-                    len = limitCidLen(rdata->msg_info.cid->id.slen);
-
-                    strncpy(call_id, rdata->msg_info.cid->id.ptr, len);
-                    call_id[len] = '\0';
+                    string call_id = pj_str2string(rdata->msg_info.cid->id);
 
                     // gibt es die Call ID schon
-                    new_call = (ed137_call_t *)pj_list_search(&call_list, call_id, cmp_call_list);
-                    if (new_call)
+                    auto new_call = allCalls.find(call_id);
+
+                    if (new_call != allCalls.end())
                     {
                         iprint(LOG_INFO, "Den call gibt es schon\n");
-                        print_call_list(&call_list);
+                        print_call_list();
                     }
                     else
                     {
                         // Der Call ist ein neuer Call
 
-                        try
-                        {
-                            new_call = new ed137_call_t;
-                        }
-                        catch (...)
-                        {
-                            iprint(LOG_ERR, "out of memory");
-                            return PJ_FALSE;
-                        }
+                        ed137_call_t newCall;
 
                         // interne Call ID (nicht SIP Call ID) in Struktur schreiben
 
-                        iprint(LOG_INFO, "Get lowest call id in list\n");
-                        new_call->index = get_lowest_callid(&call_list);
-                        new_call->state = CS_INVITE;
-                        pj_list_push_back(&call_list, new_call);
+                        newCall.id = get_lowest_callid();
+                        newCall.state = CS_INVITE;
+                        newCall.user = pj_str2string(sip_uri->user);
+                        newCall.dstUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
+                        
+                        iprint(LOG_INFO,"dstUri: %s", newCall.dstUri.c_str());
+
 
                         // TODO: welcher = User in Struktur schreiben
-                        len = (sip_uri->user.slen + 1) < MAX_STR_CALL - 1 ? sip_uri->user.slen : MAX_STR_CALL - 1;
-                        strncpy(new_call->user, sip_uri->user.ptr, len);
-                        new_call->user[len] = '\0';
 
-                        new_call->src_port = sdp->media[0]->desc.port;
-                        new_call->des_ip = pj_inet_addr(&sip_uri->host);
+                        newCall.src_port = sdp->media[0]->desc.port;
+                        newCall.des_ip = pj_inet_addr(&sip_uri->host);
+
 
                         // Suche contact header
                         contact_hdr = (pjsip_contact_hdr *)pjsip_msg_find_hdr(rdata->msg_info.msg, PJSIP_H_CONTACT, NULL);
@@ -449,20 +444,24 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                             {
 
                                 sip_uri = (pjsip_sip_uri *)uri;
-                                new_call->src_ip = pj_inet_addr(&sip_uri->host);
+                                newCall.src_ip = pj_inet_addr(&sip_uri->host);
+
+                                newCall.srcUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
+                                iprint(LOG_INFO,"srcUri: %s", newCall.srcUri.c_str());
+
 
                                 // Die Port Nummer des Gerufenen steht in der response Meldung und wird spaeter ergaenzt
+                                newCall.call_id = call_id;
 
-                                strncpy(new_call->call_id, call_id, MAX_STR_CALL - 1);
-
-                                iprint(LOG_INFO, "new call with call_id %s registered\n", call_id);
-                                print_call_list(&call_list);
+                                iprint(LOG_INFO, "new call with call_id %s registered\n", call_id.c_str());
+                                print_call_list();
                             }
                         }
                         else
                         {
                             return PJ_FALSE;
                         }
+                        allCalls.insert(pair<string, ed137_call_t>(call_id, newCall));
                     }
                 }
             }
@@ -471,39 +470,28 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
     else if (rdata->msg_info.msg->line.req.method.id == PJSIP_BYE_METHOD)
     {
 
-        // Das ist der BYE Request
-
-        // Bestimme die Call ID
-
-        len = limitCidLen(rdata->msg_info.cid->id.slen);
-
-        strncpy(call_id, rdata->msg_info.cid->id.ptr, len);
-        call_id[len] = '\0';
+        string call_id = pj_str2string(rdata->msg_info.cid->id);
 
         // Suche den Call in der Liste
 
-        call = (ed137_call_t *)pj_list_search(&call_list, call_id, cmp_call_list);
-        if (call)
+        auto call = allCalls.find(call_id);
+        if (call != allCalls.end())
         {
 
-            iprint(LOG_INFO, "call removed from List call id=%s!\n", call_id);
-            print_call_info(call);
+            iprint(LOG_INFO, "call removed from List call id=%s!\n", call_id.c_str());
+            print_call_info(call->second);
             // TODO: hier muss der Call entfernt werden
-            pj_list_erase(call);
 
             iprint(LOG_INFO, "active call list after remove\n");
-            print_call_list(&call_list);
-
-            call->state = CS_IDLE;
-
             // TODO: sp ueberarbeiten
-            delete_call_data(call, sp, call->index);
-            delete (call);
+            delete_call_data(call->second);
+            allCalls.erase(call_id);
+            print_call_list();
         }
         else
         {
-            iprint(LOG_ERR, "Call not found in list\n");
-            print_call_list(&call_list);
+            iprint(LOG_ERR, "Call not found in list ID=%s\n", call_id.c_str());
+            print_call_list();
         }
     }
 
@@ -555,17 +543,13 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
     pjsip_response_addr res_addr;
     pjsip_via_hdr *hvia;
     pj_status_t status;
-    int index;
 
     pjmedia_sdp_session *sdp;
-    //    pj_str_t *uri;
     pj_pool_t *mypool;
 
     unsigned short port;
     char *s;
     int len;
-    char call_id[MAX_STR_CALL];
-    struct ed137_call_t *call;
 
     status = pjsip_endpt_create_response_fwd(global.endpt, rdata, 0, &tdata); // Create response to be forwarded upstream (Via will be stripped here)
     if (status != PJ_SUCCESS)
@@ -609,9 +593,8 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
 
     mypool = pj_pool_create(&global.cp.factory, "request pool", 4000, 4000, NULL);
 
-    // printf("Type ID=%d\n",rdata->msg_info.msg->type); // auf den Typ muss man nicht testen, da nur eine Response in Frage kommt
+    iprint(LOG_INFO, "response Type ID: %d  METHODE: %s\n",  rdata->msg_info.msg->line.req.method.id, pj_str2string(rdata->msg_info.msg->line.req.method.name).c_str());
 
-    printf("method.id =%d\n", rdata->msg_info.msg->line.req.method.id);
 
     if (rdata->msg_info.msg->line.req.method.id == 200)
     {
@@ -631,99 +614,84 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
                     {
 
                         port = sdp->media[0]->desc.port;
-                        printf("die Portnummer des gerufenen ist %hd\n", port);
+                        iprint(LOG_INFO, "Die Portnummer des gerufenen ist %hd\n", port);
+                        string call_id = pj_str2string(rdata->msg_info.cid->id);
 
-                        len = limitCidLen(rdata->msg_info.cid->id.slen);
-
-                        strncpy(call_id, rdata->msg_info.cid->id.ptr, len);
-                        call_id[len] = '\0';
-                        call = (ed137_call_t *)pj_list_search(&call_list, call_id, cmp_call_list);
-                        if (call)
+                        // FIXME:
+                        auto call = allCalls.find(call_id);
+                        if (call != allCalls.end())
                         {
                             // die Call ID ist in der Liste vorhanden
-                            call->des_port = port;
-                            // TODO:  hier muss der Aufruf IOCTL erfolgen
-                            if (call->state == CS_INVITE)
-                            {
 
+                            if (call->second.state == CS_INVITE)
+                            {
                                 // es kann mehrfach ok gesendet werden, z.B. wenn der codec nicht passt
-                                index = cmp_call_user(call, sp);
-                                if (index >= 0)
-                                {
-                                    printf("call in Liste gefunden und user ok,!\n");
-                                    call->state = CS_OK;
-                                    print_call_list(&call_list);
-                                    send_call_data(call, sp, index, NETIF_SET_TRACE_SESSIONS);
-                                }
-                                else
-                                {
-                                    printf("user des calls nicht im config File gefunden\n");
-                                    pj_list_erase(call);
-                                }
+                                call->second.des_port = port;
+                                printf("call ok verarbeitet call_id=%d\n", call_id.c_str());
+                                call->second.state = CS_OK;
+                                print_call_list();
+                            }
+                            if (userInDlp(call->second))
+                            {
+                                send_call_data(call->second, NETIF_SET_TRACE_SESSIONS);
+                            }
+                            else
+                            {
+                                printf("user des calls nicht im config File gefunden\n");
                             }
                         }
                     }
                 }
             }
         }
-        else if (rdata->msg_info.cseq->method.id == PJSIP_BYE_METHOD || rdata->msg_info.cseq->method.id == PJSIP_CANCEL_METHOD)
+    }
+    else if (rdata->msg_info.cseq->method.id == PJSIP_BYE_METHOD || rdata->msg_info.cseq->method.id == PJSIP_CANCEL_METHOD)
+    {
+        string call_id = pj_str2string(rdata->msg_info.cid->id);
+        auto call = allCalls.find(call_id);
+        if (call != allCalls.end())
         {
-            // das ist die Statusmeldung auf Bye
 
-            len = limitCidLen(rdata->msg_info.cid->id.slen);
-            strncpy(call_id, rdata->msg_info.cid->id.ptr, len);
-            call_id[len] = '\0';
-            call = (ed137_call_t *)pj_list_search(&call_list, call_id, cmp_call_list);
-            if (call)
-            {
+            iprint(LOG_INFO, "Call aus Liste entfernt! id=%s\n", call_id);
 
-                printf("call aus Liste entfernt!\n");
-                print_call_info(call);
-                // TODO: hier muss der Call entfernt werden
-                pj_list_erase(call);
-                printf("active call List\n");
-                print_call_list(&call_list);
-                call->state = CS_IDLE;
-                delete_call_data(call, sp, call->index);
-                free(call);
-            }
-            else
-            {
-                printf("call nicht in Liste gefunden\n");
-                print_call_list(&call_list);
-            }
+            print_call_info(call->second);
+
+            // TODO: hier muss der Call entfernt werden
+            allCalls.erase(call->first);
+            print_call_list();
+            delete_call_data(call->second);
+        }
+        else
+        {
+            printf("call nicht in Liste gefunden\n");
+            print_call_list();
         }
     }
 
-    pj_pool_safe_release(&mypool);
+pj_pool_safe_release(&mypool);
 
-    iprint(LOG_INFO, "Response ID=%d\n", rdata->msg_info.msg->line.req.method.id);
 
-    snprintf(strout, rdata->msg_info.msg->line.req.method.name.slen + 1, "%s", rdata->msg_info.msg->line.req.method.name.ptr);
-    iprint(LOG_INFO, "Response Name = %s\n", strout);
-
-    /* Forward response */
-    status = pjsip_endpt_send_response(global.endpt, &res_addr, tdata, NULL, NULL);
-    if (status != PJ_SUCCESS)
-    {
-        iprint(LOG_ERR, "Error forwarding response %d", status);
-        return PJ_TRUE;
-    }
+/* Forward response */
+status = pjsip_endpt_send_response(global.endpt, &res_addr, tdata, NULL, NULL);
+if (status != PJ_SUCCESS)
+{
+    iprint(LOG_ERR, "Error forwarding response %d", status);
     return PJ_TRUE;
 }
+return PJ_TRUE;
+}
+
+
 
 /**
  * @brief gibt eine Liste aller Calls aus
  *
  * @param call  Verkettete Liste aller calls
  */
-void print_call_list(struct ed137_call_t *call)
+void print_call_list()
 {
-    struct ed137_call_t *p;
-    p = call;
-    while ((p = p->next) != call)
-    {
-        print_call_info(p);
+    for(auto it: allCalls) {
+         print_call_info(it.second);   
     }
 }
 
@@ -733,19 +701,19 @@ void print_call_list(struct ed137_call_t *call)
  * @param call
  */
 
-void print_call_info(struct ed137_call_t *call)
+void print_call_info(ed137_call_t &call)
 {
     char addr_ptr[20];
 
-    iprint(LOG_INFO, "user:%s\n", call->user);
-    iprint(LOG_INFO, "call_id: %s\n", call->call_id);
-    iprint(LOG_INFO, "call_index:%d\n", call->index);
-    iprint(LOG_INFO, "call_state:%d\n", call->state);
+    iprint(LOG_INFO, "user:%s\n", call.user.c_str());
+    iprint(LOG_INFO, "call_id: %s\n", call.call_id.c_str());
+    iprint(LOG_INFO, "call_index:%d\n", call.id);
+    iprint(LOG_INFO, "call_state:%d\n", call.state);
 
-    pj_inet_ntop(PJ_AF_INET, &call->src_ip, addr_ptr, 20);
-    iprint(LOG_INFO, "ip_src: %s:%hd\n", addr_ptr, call->src_port);
-    pj_inet_ntop(PJ_AF_INET, &call->des_ip, addr_ptr, 20);
-    iprint(LOG_INFO, "ip_des: %s:%hd\n", addr_ptr, call->des_port);
+    pj_inet_ntop(PJ_AF_INET, &call.src_ip, addr_ptr, 20);
+    iprint(LOG_INFO, "ip_src: %s:%hd\n", addr_ptr, call.src_port);
+    pj_inet_ntop(PJ_AF_INET, &call.des_ip, addr_ptr, 20);
+    iprint(LOG_INFO, "ip_des: %s:%hd\n", addr_ptr, call.des_port);
 }
 
 /**
@@ -755,54 +723,48 @@ void print_call_info(struct ed137_call_t *call)
  * @return int 0 Liste ist leer
  *
  */
-int get_lowest_callid(struct ed137_call_t *call)
+int get_lowest_callid()
 {
-    struct ed137_call_t *p;
-    int found;
-    int call_id = 0;
+    int id = 0;
 
-    if (call->next == call)
-    {
-        iprint(LOG_INFO, "list of calls is empty\n");
-        return 0; // Liste ist leer
-    }
+    if(allCalls.size()==0) { 
+        id = 0;
+    } else {
+    
+    bool found = false;
 
-    do
+    do{
+    found = false;
+    for (auto it = allCalls.begin(); it!=allCalls.end(); it++)
     {
-        found = 0;
-        p = call;
-        p = p->next;
-        while (p != call)
-        {
-            if (p->index == call_id)
-            {
-                found = -1;
-                call_id++;
-                break;
-            }
-            p = p->next;
+        if(it->second.id==id) {
+            found = true;
+            id++;
+            break;
         }
-    } while (found);
-    iprint(LOG_INFO, "lowest call ID is %d\n", call_id);
-    return call_id;
+    }    
+    }
+    while(found==true);
+    }
+   
+    iprint(LOG_INFO, "lowest call ID is %d\n", id);
+    return id;
 }
 
 /**
  * @brief loescht die Struktur im kernel fuer einen call
  *
  * @param call
- * @param sp
  * @param index
  * @return int
  */
 
-int delete_call_data(struct ed137_call_t *call, struct t_config *sp, int index)
+int delete_call_data(ed137_call_t &call)
 {
     int id;
     int ret;
 
-    id = call->index;
-    ret = ioctl_del_trace_session(dz_net, id);
+    ret = ioctl_del_trace_session(dz_net, call.id);
     if (ret == -1)
     {
         printf("error: ioctl %s\n", __FUNCTION__);
@@ -814,111 +776,146 @@ int delete_call_data(struct ed137_call_t *call, struct t_config *sp, int index)
  * @brief
  *
  * @param call
- * @param sp
  * @param index
  * @param ioctl_id
  * @return int
  */
-int send_call_data(struct ed137_call_t *call, struct t_config *sp, int index, int ioctl_id)
+int send_call_data(ed137_call_t &call, int ioctl_id)
 {
     struct trace_session_t ts;
 
     int ret;
     int i;
+    ns_dl::delayLineParam erg;
 
-    ts.id = call->index;
-    ts.on_delay.autorepeat = !strncmp(sp->sessionParam[index].on.autorepeat, "on", 2) ? -1 : 0;
-    ts.on_delay.r2s_delay = !strncmp(sp->sessionParam[index].on.r2sdelay, "on", 2) ? -1 : 0;
-    ts.on_delay.lenght = sp->sessionParam[index].on.index;
-    for (i = 0; i < ts.on_delay.lenght; i++)
+
+    bool found = false;
+    for (auto it : dlp)
     {
-        ts.on_delay.delay[i] = sp->sessionParam[index].on.array[i];
+        if (it.userpart == call.user)
+        {
+            found = true;
+            erg = it;
+            break;
+        }
     }
 
-    ts.off_delay.autorepeat = !strncmp(sp->sessionParam[index].off.autorepeat, "on", 2) ? -1 : 0;
-    ts.off_delay.r2s_delay = !strncmp(sp->sessionParam[index].off.r2sdelay, "on", 2) ? -1 : 0;
-    ts.off_delay.lenght = sp->sessionParam[index].off.index;
-    for (i = 0; i < ts.off_delay.lenght; i++)
+if(found)
     {
-        ts.off_delay.delay[i] = sp->sessionParam[index].off.array[i];
+        iprint(LOG_INFO,"User Part was found\n");
+    ts.id = call.id;
+
+    ts.on_delay.autorepeat = erg.autoRepeat;
+    ts.on_delay.r2s_delay=erg.r2sDelay;
+
+    ts.on_delay.lenght=0;
+    ts.on_delay.delay[0]=0; //FIXME:
+
+    ts.off_delay.autorepeat     = erg.autoRepeat;
+    ts.off_delay.r2s_delay      = erg.r2sDelay;
+    ts.off_delay.lenght = 0;
+    ts.off_delay.delay[0] =  0; //FIXME:
     }
+
 }
+
 /**
- * @brief  sucht den user part eines calls in der Struktur sp
+ * @brief Sucht in den delay line parametern den userpart des calls
  *
  * @param call
- * @param sp
- * @return int -1 call nicht gefunden
- *              >=0 call index des calls
+ * @return bool true gefunden, false nicht gefunden
  */
-int cmp_call_user(struct ed137_call_t *call, struct t_config *sp)
+
+bool userInDlp(struct ed137_call_t &call)
 {
-    int retval = -1;
-    for (int i = 0; i < sp->count; i++)
+    bool retval = false;
+
+    for (auto it : dlp)
     {
-        retval = strncmp(call->user, sp->sessionParam[i].userpart, strlen(sp->sessionParam[i].userpart));
-        if (!retval && strlen(sp->sessionParam[i].userpart))
+        if (call.user == it.userpart)
         {
-            retval = i;
+            retval = true;
             break;
         }
     }
     return retval;
 }
 
-
-namespace ns {
+namespace ns
+{
     // a simple struct to model a person
-    struct person {
+    struct person
+    {
         std::string name;
         std::string address;
         int age;
     };
 }
 
-
 void ev_activate_config(event &event)
 {
 
     string s;
     json j;
-    
 
-        try
-        {
-            j = json::parse(event.get_message().get()->get_string());
-            cout << endl << endl;
-            cout << j.dump();
+    try
+    {
+        j = json::parse(event.get_message().get()->get_string());
+        cout << endl
+             << endl;
+        cout << j.dump();
 
-            //	j = json::parse(event.get_message().get()->get_string());
-        }
-        catch (std::exception &e)
-        {
-            std::stringstream log;
-        }
+        //	j = json::parse(event.get_message().get()->get_string());
+    }
+    catch (std::exception &e)
+    {
+        std::stringstream log;
+    }
 }
-
 
 void ev_delayLine(event &event)
 {
 
     string s;
     json j;
-    
 
-        try
-        {
-            j = json::parse(event.get_message().get()->get_string());
-            cout << endl << endl;
-            cout << j.dump();
-            dlp = j;
+    try
+    {
+        j = json::parse(event.get_message().get()->get_string());
+        cout << endl
+             << endl;
+        cout << j.dump();
+        dlp = j;
 
-            ns_dl::printDelayLine(dlp);
+        ns_dl::printDelayLine(dlp);
 
-            //	j = json::parse(event.get_message().get()->get_string());
-        }
-        catch (std::exception &e)
-        {
-            std::stringstream log;
-        }
+        //	j = json::parse(event.get_message().get()->get_string());
+    }
+    catch (std::exception &e)
+    {
+        std::stringstream log;
+    }
+}
+
+void ev_ipConfiguration(event &event)
+{
+
+    string s;
+    json j;
+    dnat_sip_proxy_h dsp;
+    int ret;
+
+    try
+    {
+        j = json::parse(event.get_message().get()->get_string());
+        cout << endl
+             << endl;
+        cout << j.dump();
+        ns_ip::from_json(j, dsp);
+        ret = ioctl_set_sip_proxy_addr(dz_net, &dsp);
+    }
+    catch (std::exception &e)
+    {
+        std::stringstream log;
+    }
 }

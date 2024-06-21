@@ -529,7 +529,7 @@ static pj_bool_t on_rx_response( pjsip_rx_data *rdata )
 								// es kann mehrfach ok gesendet werden, z.B. wenn der codec nicht passt
 								index = cmp_call_user(call,sp);
 								if(index>=0) {
-									printf("call in Liste gefunden und user ok,!\n");
+									printf("call in Liste gefunden und user ok,!\n");ioctl
 									call->state = CS_OK;
 									print_call_list(&call_list);
 									send_call_data(call,sp,index,NETIF_SET_TRACE_SESSIONS);
