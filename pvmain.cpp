@@ -8,6 +8,7 @@
  * @copyright Copyright (c) 2024
  *
  */
+#define STATEFUL    1
 
 #define THIS_FILE "pvmain.cpp"
 #include <iostream>
@@ -67,6 +68,8 @@
 #include "ipconfiguration.h"
 #include <vector>
 #include <map>
+#include "pvmain.h"
+#include "sessionParam.h"
 
 using namespace std;
 using namespace sio;
@@ -88,53 +91,13 @@ LOG_INFO
 
 string pj_str2string(pj_str_t &p)
 {
-    string s = string(p.ptr,0,p.slen);
+    string s = string(p.ptr, 0, p.slen);
     // iprint(LOG_INFO,"pj_str2string: %s\n",s.c_str());
-    
+
     return s;
 }
 
 char devnet[] = "/dev/devNet";
-char strout[1000];
-
-// struct t_callsDetected
-// {
-//     int id; // ID des Calls, es wird immer die niedrigste Gesucht und diese id entspricht dem Pin des GPIO
-//     string srcUri;
-//     string dstUri;
-//     string user;
-//     bool foundInDelayline; // es gibt einen Delayline Eintrag
-//     int delayLineId;       // Verweis auf die ID im Vector delayLine, nur gueltig wenn foundInDelayline true ist
-// };
-
-// vector<t_callsDetected> allCalls;
-
-#define MAX_STR_CALL 200 // maximale Laenge des SIP Strings
-enum call_state_t
-{
-    CS_IDLE = 1,
-    CS_INVITE,
-    CS_TRYING,
-    CS_OK
-}; // Zustände der State Machine
-
-struct ed137_call_t
-{
-    unsigned int id;
-    string call_id;
-    unsigned short src_port;
-    unsigned short des_port;
-
-    pj_in_addr src_ip;
-    pj_in_addr des_ip;
-
-    enum call_state_t state; // invite,
-
-    string user;
-    string dstUri;
-    string srcUri;
-    bool delayLineFound;    // true, wenn es zur Session einen passenden delay Line Eintrag gibt
-};
 
 map<string, ed137_call_t> allCalls;
 
@@ -174,11 +137,6 @@ socket::ptr current_socket;
 
 vector<ns_dl::delayLineParam> dlp;
 
-int limitCidLen(int len)
-{
-    (len + 1) < MAX_STR_CALL ? len + 1 : MAX_STR_CALL;
-}
-
 class connection_listener
 {
 
@@ -194,18 +152,19 @@ public:
         _lock.lock();
         _cond.notify_all();
         connect_finish = true;
-        cout << "connect_finish\n";
+        iprint(LOG_INFO,"connect_finish\n");
         _lock.unlock();
     }
     void on_close(client::close_reason const &reason)
     {
-        std::cout << "sio closed " << reason << std::endl;
+        // std::cout << "sio closed " << reason << std::endl;
+        iprint(LOG_INFO,"sio closed\n");
         exit(0);
     }
 
     void on_fail()
     {
-        std::cout << "sio failed " << std::endl;
+        iprint(LOG_ERR,"sio failed\n");
         exit(0);
     }
 };
@@ -229,7 +188,8 @@ int main(int argc, char *argv[])
         iprint(LOG_ERR, "error: open device devnet\n");
     }
 
-    global.port = 5060;
+    global.port = 5060; 
+    global.record_route=true;
     pj_log_set_level(4);
 
     status = init_stack();
@@ -288,14 +248,15 @@ int main(int argc, char *argv[])
     _lock.unlock();
     current_socket = h.socket();
 
-    current_socket->on("sessions", ev_activate_config);
     current_socket->on("reset", ev_activate_config);
     current_socket->on("delayline", ev_delayLine);
     current_socket->on("ipConfiguration", ev_ipConfiguration);
 
+    json st= {{"alive","ok"}};
     for (;;)
     {
-        sleep(1);
+        sleep(5);
+        current_socket->emit("alive",st.dump());
     }
 
     pj_thread_join(global.thread);
@@ -386,12 +347,6 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
             if (sdp->media_count == 1)
             {
 
-
-
-
-
-
-
                 uri = (pjsip_uri *)pjsip_uri_get_uri(rdata->msg_info.msg->line.req.uri);
 
                 /* nur SIP/SIPS schemes */
@@ -399,7 +354,6 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                 {
 
                     sip_uri = (pjsip_sip_uri *)uri;
-
 
                     // Ist die invite Meldung ein neuer call oder ein reinvite?
 
@@ -425,15 +379,14 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                         newCall.state = CS_INVITE;
                         newCall.user = pj_str2string(sip_uri->user);
                         newCall.dstUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
-                        
-                        iprint(LOG_INFO,"dstUri: %s", newCall.dstUri.c_str());
 
+                        iprint(LOG_INFO, "dstUri: %s", newCall.dstUri.c_str());
 
                         // TODO: welcher = User in Struktur schreiben
 
                         newCall.src_port = sdp->media[0]->desc.port;
                         newCall.des_ip = pj_inet_addr(&sip_uri->host);
-
+                        newCall.delayLineFound = false;
 
                         // Suche contact header
                         contact_hdr = (pjsip_contact_hdr *)pjsip_msg_find_hdr(rdata->msg_info.msg, PJSIP_H_CONTACT, NULL);
@@ -447,8 +400,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                                 newCall.src_ip = pj_inet_addr(&sip_uri->host);
 
                                 newCall.srcUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
-                                iprint(LOG_INFO,"srcUri: %s", newCall.srcUri.c_str());
-
+                                iprint(LOG_INFO, "srcUri: %s", newCall.srcUri.c_str());
 
                                 // Die Port Nummer des Gerufenen steht in der response Meldung und wird spaeter ergaenzt
                                 newCall.call_id = call_id;
@@ -593,8 +545,7 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
 
     mypool = pj_pool_create(&global.cp.factory, "request pool", 4000, 4000, NULL);
 
-    iprint(LOG_INFO, "response Type ID: %d  METHODE: %s\n",  rdata->msg_info.msg->line.req.method.id, pj_str2string(rdata->msg_info.msg->line.req.method.name).c_str());
-
+    iprint(LOG_INFO, "response Type ID: %d  METHODE: %s\n", rdata->msg_info.msg->line.req.method.id, pj_str2string(rdata->msg_info.msg->line.req.method.name).c_str());
 
     if (rdata->msg_info.msg->line.req.method.id == 200)
     {
@@ -627,18 +578,24 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
                             {
                                 // es kann mehrfach ok gesendet werden, z.B. wenn der codec nicht passt
                                 call->second.des_port = port;
-                                printf("call ok verarbeitet call_id=%d\n", call_id.c_str());
+                                iprint(LOG_INFO,"call ok verarbeitet call_id=%d\n", call_id.c_str());
                                 call->second.state = CS_OK;
                                 print_call_list();
                             }
                             if (userInDlp(call->second))
                             {
+                                call->second.delayLineFound = true;
                                 send_call_data(call->second, NETIF_SET_TRACE_SESSIONS);
                             }
                             else
                             {
-                                printf("user des calls nicht im config File gefunden\n");
+                                iprint(LOG_INFO, "user des calls nicht gefunden\n");
                             }
+                            json erg;
+                            ns_sess::to_json(erg, allCalls);
+                            current_socket->emit("session2Node", erg.dump());
+                            iprint(LOG_INFO, "session: %s", erg.dump().c_str());
+                            
                         }
                     }
                 }
@@ -647,6 +604,7 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
     }
     else if (rdata->msg_info.cseq->method.id == PJSIP_BYE_METHOD || rdata->msg_info.cseq->method.id == PJSIP_CANCEL_METHOD)
     {
+        cout << "BYE erkannt\n";
         string call_id = pj_str2string(rdata->msg_info.cid->id);
         auto call = allCalls.find(call_id);
         if (call != allCalls.end())
@@ -660,28 +618,30 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
             allCalls.erase(call->first);
             print_call_list();
             delete_call_data(call->second);
+
+            json erg;
+            ns_sess::to_json(erg, allCalls);
+            current_socket->emit("session2Node", erg.dump());
+            iprint(LOG_INFO, "session: %s", erg.dump().c_str());
         }
         else
         {
-            printf("call nicht in Liste gefunden\n");
+            iprint(LOG_INFO,"call nicht in Liste gefunden\n");
             print_call_list();
         }
     }
 
-pj_pool_safe_release(&mypool);
+    pj_pool_safe_release(&mypool);
 
-
-/* Forward response */
-status = pjsip_endpt_send_response(global.endpt, &res_addr, tdata, NULL, NULL);
-if (status != PJ_SUCCESS)
-{
-    iprint(LOG_ERR, "Error forwarding response %d", status);
+    /* Forward response */
+    status = pjsip_endpt_send_response(global.endpt, &res_addr, tdata, NULL, NULL);
+    if (status != PJ_SUCCESS)
+    {
+        iprint(LOG_ERR, "Error forwarding response %d", status);
+        return PJ_TRUE;
+    }
     return PJ_TRUE;
 }
-return PJ_TRUE;
-}
-
-
 
 /**
  * @brief gibt eine Liste aller Calls aus
@@ -690,8 +650,9 @@ return PJ_TRUE;
  */
 void print_call_list()
 {
-    for(auto it: allCalls) {
-         print_call_info(it.second);   
+    for (auto it : allCalls)
+    {
+        print_call_info(it.second);
     }
 }
 
@@ -727,26 +688,30 @@ int get_lowest_callid()
 {
     int id = 0;
 
-    if(allCalls.size()==0) { 
-        id = 0;
-    } else {
-    
-    bool found = false;
-
-    do{
-    found = false;
-    for (auto it = allCalls.begin(); it!=allCalls.end(); it++)
+    if (allCalls.size() == 0)
     {
-        if(it->second.id==id) {
-            found = true;
-            id++;
-            break;
-        }
-    }    
+        id = 0;
     }
-    while(found==true);
+    else
+    {
+
+        bool found = false;
+
+        do
+        {
+            found = false;
+            for (auto it = allCalls.begin(); it != allCalls.end(); it++)
+            {
+                if (it->second.id == id)
+                {
+                    found = true;
+                    id++;
+                    break;
+                }
+            }
+        } while (found == true);
     }
-   
+
     iprint(LOG_INFO, "lowest call ID is %d\n", id);
     return id;
 }
@@ -767,7 +732,7 @@ int delete_call_data(ed137_call_t &call)
     ret = ioctl_del_trace_session(dz_net, call.id);
     if (ret == -1)
     {
-        printf("error: ioctl %s\n", __FUNCTION__);
+        iprint(LOG_ERR,"error: ioctl %s\n", __FUNCTION__);
     }
     return ret;
 }
@@ -788,7 +753,6 @@ int send_call_data(ed137_call_t &call, int ioctl_id)
     int i;
     ns_dl::delayLineParam erg;
 
-
     bool found = false;
     for (auto it : dlp)
     {
@@ -800,23 +764,22 @@ int send_call_data(ed137_call_t &call, int ioctl_id)
         }
     }
 
-if(found)
+    if (found)
     {
-        iprint(LOG_INFO,"User Part was found\n");
-    ts.id = call.id;
+        iprint(LOG_INFO, "User Part was found\n");
+        ts.id = call.id;
 
-    ts.on_delay.autorepeat = erg.autoRepeat;
-    ts.on_delay.r2s_delay=erg.r2sDelay;
+        ts.on_delay.autorepeat = erg.autoRepeat;
+        ts.on_delay.r2s_delay = erg.r2sDelay;
 
-    ts.on_delay.lenght=0;
-    ts.on_delay.delay[0]=0; //FIXME:
+        ts.on_delay.lenght = 0;
+        ts.on_delay.delay[0] = 0; // FIXME:
 
-    ts.off_delay.autorepeat     = erg.autoRepeat;
-    ts.off_delay.r2s_delay      = erg.r2sDelay;
-    ts.off_delay.lenght = 0;
-    ts.off_delay.delay[0] =  0; //FIXME:
+        ts.off_delay.autorepeat = erg.autoRepeat;
+        ts.off_delay.r2s_delay = erg.r2sDelay;
+        ts.off_delay.lenght = 0;
+        ts.off_delay.delay[0] = 0; // FIXME:
     }
-
 }
 
 /**
@@ -861,15 +824,13 @@ void ev_activate_config(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        cout << endl
-             << endl;
-        cout << j.dump();
+        iprint(LOG_INFO,"%s",j.dump().c_str());
 
         //	j = json::parse(event.get_message().get()->get_string());
     }
     catch (std::exception &e)
     {
-        std::stringstream log;
+        iprint(LOG_ERR, "error parse config: %s", e.what());
     }
 }
 
@@ -882,9 +843,7 @@ void ev_delayLine(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        cout << endl
-             << endl;
-        cout << j.dump();
+        iprint(LOG_INFO,"%s",j.dump().c_str());
         dlp = j;
 
         ns_dl::printDelayLine(dlp);
@@ -908,9 +867,8 @@ void ev_ipConfiguration(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        cout << endl
-             << endl;
-        cout << j.dump();
+        iprint(LOG_INFO,"%s",j.dump().c_str());
+
         ns_ip::from_json(j, dsp);
         ret = ioctl_set_sip_proxy_addr(dz_net, &dsp);
     }

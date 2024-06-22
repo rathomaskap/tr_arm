@@ -1,3 +1,18 @@
+/**
+ * @file delayline.h
+ * @author your name (you@domain.com)
+ * @brief 
+ * @version 0.1
+ * @date 2024-06-21
+ * 
+ * @copyright Copyright (c) 2024
+ * 
+ */
+
+
+#ifndef __DELAYLINE_H
+#define __DELAYLINE_H
+
 #include <vector>
 #include <string>
 #include <json.hpp>
@@ -39,3 +54,6 @@ void printDelayLine ( vector <delayLineParam> &dlp );
 
 
 }
+
+
+#endif
