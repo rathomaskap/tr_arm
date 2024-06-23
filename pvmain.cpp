@@ -439,6 +439,12 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
             delete_call_data(call->second);
             allCalls.erase(call_id);
             print_call_list();
+
+            json erg;
+            ns_sess::to_json(erg, allCalls);
+            current_socket->emit("session2Node", erg.dump());
+            iprint(LOG_INFO, "session: %s", erg.dump().c_str());
+
         }
         else
         {
@@ -604,7 +610,8 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
     }
     else if (rdata->msg_info.cseq->method.id == PJSIP_BYE_METHOD || rdata->msg_info.cseq->method.id == PJSIP_CANCEL_METHOD)
     {
-        cout << "BYE erkannt\n";
+        cout << "BYE hier sollte ich nicht hinkommen\n";
+        /*
         string call_id = pj_str2string(rdata->msg_info.cid->id);
         auto call = allCalls.find(call_id);
         if (call != allCalls.end())
@@ -629,6 +636,7 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
             iprint(LOG_INFO,"call nicht in Liste gefunden\n");
             print_call_list();
         }
+        */
     }
 
     pj_pool_safe_release(&mypool);

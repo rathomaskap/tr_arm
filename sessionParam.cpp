@@ -50,7 +50,7 @@ namespace ns_sess
             sessionArray.push_back(ses);
             ses.clear();
         }
-    to_j = {"sessions",sessionArray};
+    to_j =sessionArray;
     }
     
 }

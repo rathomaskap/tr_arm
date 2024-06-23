@@ -47,6 +47,8 @@ struct delayLineParam {
 
     vector<delayGroup> dgOn;    
     vector<delayGroup> dgOff;    
+    vector<int> lineOn;
+    vector<int> lineOff;
 };
 
 void from_json(const json& j, vector<delayLineParam> &p);
