@@ -35,9 +35,16 @@ struct ed137_call_t
     pj_in_addr src_ip;
     pj_in_addr des_ip;
 
+    // unsigned int src_ip;
+    // unsigned int des_ip;
+
+
     enum call_state_t state; // invite,
 
-    string user;
+    string dstUserPart;
+    string srcUserPart;
+
+
     string dstUri;
     string srcUri;
     bool delayLineFound;    // true, wenn es zur Session einen passenden delay Line Eintrag gibt

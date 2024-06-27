@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2024
  *
  */
-#define STATEFUL    1
+#define STATEFUL 1
 
 #define THIS_FILE "pvmain.cpp"
 #include <iostream>
@@ -100,6 +100,7 @@ string pj_str2string(pj_str_t &p)
 char devnet[] = "/dev/devNet";
 
 map<string, ed137_call_t> allCalls;
+dummy_device_t dd;
 
 /*********************************************************************
  * Prototypen
@@ -119,9 +120,12 @@ void print_call_info(ed137_call_t &call);
 void print_call_list();
 static pj_status_t init_stateless_proxy(void);
 
+
 void ev_activate_config(event &event);
 void ev_ipConfiguration(event &event);
 void ev_delayLine(event &event);
+
+void sendCallData();
 
 /*********************************************************************
  * Globale Variable
@@ -135,7 +139,8 @@ std::condition_variable_any _cond;
 bool connect_finish = false;
 socket::ptr current_socket;
 
-vector<ns_dl::delayLineParam> dlp;
+vector<ns_dl::delayLineParam> dlp;      // aktuelle Daten, mit denen der Kernel arbeitet
+// vector<ns_dl::delayLineParam> newdlp;   // Werte von der Mangement Oberflaeche, um die Differenz zu dlp zu bilden
 
 class connection_listener
 {
@@ -152,19 +157,19 @@ public:
         _lock.lock();
         _cond.notify_all();
         connect_finish = true;
-        iprint(LOG_INFO,"connect_finish\n");
+        iprint(LOG_INFO, "connect_finish\n");
         _lock.unlock();
     }
     void on_close(client::close_reason const &reason)
     {
         // std::cout << "sio closed " << reason << std::endl;
-        iprint(LOG_INFO,"sio closed\n");
+        iprint(LOG_INFO, "sio closed\n");
         exit(0);
     }
 
     void on_fail()
     {
-        iprint(LOG_ERR,"sio failed\n");
+        iprint(LOG_ERR, "sio failed\n");
         exit(0);
     }
 };
@@ -188,8 +193,8 @@ int main(int argc, char *argv[])
         iprint(LOG_ERR, "error: open device devnet\n");
     }
 
-    global.port = 5060; 
-    global.record_route=true;
+    global.port = 5060;
+    global.record_route = true;
     pj_log_set_level(4);
 
     status = init_stack();
@@ -223,7 +228,7 @@ int main(int argc, char *argv[])
     }
 
 #else
-    puts("\nPress Ctrl-C to quit\n");
+    puts("\nPress Ctrl-C to quit\n");^
     for (;;)
     {
         pj_time_val delay = {0, 0};
@@ -252,11 +257,11 @@ int main(int argc, char *argv[])
     current_socket->on("delayline", ev_delayLine);
     current_socket->on("ipConfiguration", ev_ipConfiguration);
 
-    json st= {{"alive","ok"}};
+    json st = {{"alive", "ok"}};
     for (;;)
     {
         sleep(5);
-        current_socket->emit("alive",st.dump());
+        current_socket->emit("alive", st.dump());
     }
 
     pj_thread_join(global.thread);
@@ -377,7 +382,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
 
                         newCall.id = get_lowest_callid();
                         newCall.state = CS_INVITE;
-                        newCall.user = pj_str2string(sip_uri->user);
+                        newCall.dstUserPart = pj_str2string(sip_uri->user);
                         newCall.dstUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
 
                         iprint(LOG_INFO, "dstUri: %s", newCall.dstUri.c_str());
@@ -386,6 +391,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
 
                         newCall.src_port = sdp->media[0]->desc.port;
                         newCall.des_ip = pj_inet_addr(&sip_uri->host);
+                       
                         newCall.delayLineFound = false;
 
                         // Suche contact header
@@ -401,6 +407,8 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
 
                                 newCall.srcUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
                                 iprint(LOG_INFO, "srcUri: %s", newCall.srcUri.c_str());
+
+                                 newCall.srcUserPart = pj_str2string(sip_uri->user);
 
                                 // Die Port Nummer des Gerufenen steht in der response Meldung und wird spaeter ergaenzt
                                 newCall.call_id = call_id;
@@ -444,7 +452,6 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
             ns_sess::to_json(erg, allCalls);
             current_socket->emit("session2Node", erg.dump());
             iprint(LOG_INFO, "session: %s", erg.dump().c_str());
-
         }
         else
         {
@@ -584,14 +591,15 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
                             {
                                 // es kann mehrfach ok gesendet werden, z.B. wenn der codec nicht passt
                                 call->second.des_port = port;
-                                iprint(LOG_INFO,"call ok verarbeitet call_id=%d\n", call_id.c_str());
+                                iprint(LOG_INFO, "call ok verarbeitet call_id=%d\n", call_id.c_str());
                                 call->second.state = CS_OK;
                                 print_call_list();
                             }
                             if (userInDlp(call->second))
                             {
                                 call->second.delayLineFound = true;
-                                send_call_data(call->second, NETIF_SET_TRACE_SESSIONS);
+                                // send_call_data(call->second, NETIF_SET_TRACE_SESSIONS);
+                                sendCallData();
                             }
                             else
                             {
@@ -601,7 +609,6 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata)
                             ns_sess::to_json(erg, allCalls);
                             current_socket->emit("session2Node", erg.dump());
                             iprint(LOG_INFO, "session: %s", erg.dump().c_str());
-                            
                         }
                     }
                 }
@@ -674,7 +681,9 @@ void print_call_info(ed137_call_t &call)
 {
     char addr_ptr[20];
 
-    iprint(LOG_INFO, "user:%s\n", call.user.c_str());
+    iprint(LOG_INFO, "dstUserPart:%s\n", call.dstUserPart.c_str());
+    iprint(LOG_INFO, "srcUserPart:%s\n", call.srcUserPart.c_str());
+
     iprint(LOG_INFO, "call_id: %s\n", call.call_id.c_str());
     iprint(LOG_INFO, "call_index:%d\n", call.id);
     iprint(LOG_INFO, "call_state:%d\n", call.state);
@@ -740,7 +749,7 @@ int delete_call_data(ed137_call_t &call)
     ret = ioctl_del_trace_session(dz_net, call.id);
     if (ret == -1)
     {
-        iprint(LOG_ERR,"error: ioctl %s\n", __FUNCTION__);
+        iprint(LOG_ERR, "error: ioctl %s\n", __FUNCTION__);
     }
     return ret;
 }
@@ -764,7 +773,7 @@ int send_call_data(ed137_call_t &call, int ioctl_id)
     bool found = false;
     for (auto it : dlp)
     {
-        if (it.userpart == call.user)
+        if (it.dstUserPart == call.dstUserPart)
         {
             found = true;
             erg = it;
@@ -777,13 +786,13 @@ int send_call_data(ed137_call_t &call, int ioctl_id)
         iprint(LOG_INFO, "User Part was found\n");
         ts.id = call.id;
 
-        ts.on_delay.autorepeat = erg.autoRepeat;
+        ts.on_delay.autorepeat = erg.autoRepeatOn;
         ts.on_delay.r2s_delay = erg.r2sDelay;
 
         ts.on_delay.lenght = 0;
         ts.on_delay.delay[0] = 0; // FIXME:
 
-        ts.off_delay.autorepeat = erg.autoRepeat;
+        ts.off_delay.autorepeat = erg.autoRepeatOff;
         ts.off_delay.r2s_delay = erg.r2sDelay;
         ts.off_delay.lenght = 0;
         ts.off_delay.delay[0] = 0; // FIXME:
@@ -803,7 +812,7 @@ bool userInDlp(struct ed137_call_t &call)
 
     for (auto it : dlp)
     {
-        if (call.user == it.userpart)
+        if (call.dstUserPart == it.dstUserPart)
         {
             retval = true;
             break;
@@ -832,7 +841,7 @@ void ev_activate_config(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        iprint(LOG_INFO,"%s",j.dump().c_str());
+        iprint(LOG_INFO, "%s", j.dump().c_str());
 
         //	j = json::parse(event.get_message().get()->get_string());
     }
@@ -851,16 +860,25 @@ void ev_delayLine(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        iprint(LOG_INFO,"%s",j.dump().c_str());
+        iprint(LOG_INFO, "%s", j.dump().c_str());
         dlp = j;
 
         ns_dl::printDelayLine(dlp);
+
+        // wandle dlp in die Struktur
+        sendCallData();
+
+        // hier kann sich die Farbe des Sessioneintrags aendern
+        json erg;
+        ns_sess::to_json(erg, allCalls);
+        current_socket->emit("session2Node", erg.dump());
+        iprint(LOG_INFO, "session: %s", erg.dump().c_str());
 
         //	j = json::parse(event.get_message().get()->get_string());
     }
     catch (std::exception &e)
     {
-        std::stringstream log;
+        iprint(LOG_ERR, "error: ev_delayLine convert to json\n");
     }
 }
 
@@ -875,9 +893,11 @@ void ev_ipConfiguration(event &event)
     try
     {
         j = json::parse(event.get_message().get()->get_string());
-        iprint(LOG_INFO,"%s",j.dump().c_str());
+        iprint(LOG_INFO, "%s", j.dump().c_str());
 
         ns_ip::from_json(j, dsp);
+        ns_ip::from_json2dummy(j,dd);
+
         ret = ioctl_set_sip_proxy_addr(dz_net, &dsp);
     }
     catch (std::exception &e)
@@ -885,3 +905,80 @@ void ev_ipConfiguration(event &event)
         std::stringstream log;
     }
 }
+/**
+ * @brief
+ *
+ */
+void sendCallData()
+{
+
+    trace_session_t ts;
+    pj_in_addr addr;
+
+    // deactivate delay line
+    // deleate all data
+    // insert new data
+
+ioctl_reset_all_sessions(dz_net);
+
+    for (auto i = allCalls.begin(); i != allCalls.end(); i++)
+    {
+        i->second.delayLineFound = false;
+        for (auto l : dlp)
+        {
+            if (i->second.dstUserPart == l.dstUserPart && i->second.srcUserPart == l.srcUserPart)
+            {
+                i->second.delayLineFound = true;
+
+                ts.desip = i->second.des_ip.s_addr;
+                ts.desport = htons(i->second.des_port);
+                ts.srcip = i->second.src_ip.s_addr;
+                ts.srcport = htons(i->second.src_port);
+                ts.id = i->second.id;
+                ts.to_uas = l.direction;
+                ts.on_delay.autorepeat = l.autoRepeatOn;
+                ts.on_delay.r2s_delay = l.r2sDelay;
+
+
+                ts.dummydesip = dd.ip;
+	            ts.dummydesip&= dd.netmask;
+	            ts.dummydesip|= htonl(ts.desip) & ~dd.netmask;
+                ts.dummydesip = htonl(ts.dummydesip);
+
+                iprint(LOG_INFO,"dd.ip=%X dd.netmask=%X ts.desip=%X ts.dummydesip=%X\n",dd.ip,dd.netmask,htonl(ts.desip),ts.dummydesip);
+
+	            ts.dummysrcip = dd.ip;
+	            ts.dummysrcip&= dd.netmask;
+	            ts.dummysrcip|= htonl(ts.srcip) & ~dd.netmask;
+                ts.dummysrcip = htonl(ts.dummysrcip);
+
+                iprint(LOG_INFO,"dd.ip=%X dd.netmask=%X ts.srcip=%X ts.dummysrcip=%X\n",dd.ip,dd.netmask,htonl(ts.srcip),ts.dummysrcip);
+
+
+
+
+                int lineOnSize = l.lineOn.size();
+                ts.on_delay.lenght = (lineOnSize < MAX_DELAY) ? lineOnSize : MAX_DELAY;
+                for (int i = 0; i < ts.on_delay.lenght; i++)
+                {
+                    ts.on_delay.delay[i] = l.lineOn[i];
+                }
+
+                ts.off_delay.autorepeat = l.autoRepeatOff;
+                ts.off_delay.r2s_delay = l.r2sDelay;
+                ts.off_delay.lenght = (l.lineOff.size() < MAX_DELAY) ? l.lineOff.size() : MAX_DELAY;
+                for (int i = 0; i < ts.off_delay.lenght; i++)
+                {
+                    ts.off_delay.delay[i] = l.lineOff[i];
+                }
+
+                ioctl_set_trace_session(dz_net, &ts);
+            }
+        }
+    }
+    for (auto i : allCalls)
+    {
+        iprint(LOG_INFO, "delayLineFound=%d\n", i.second.delayLineFound);
+    }
+}
+

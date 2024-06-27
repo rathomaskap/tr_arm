@@ -53,7 +53,7 @@ namespace ns_ip
             int mask2 = stoi(strMask2);
 
             iprint(LOG_INFO, "IP CONFIG: ip1=%s/%d ip2=%s/%d", ip1Str.c_str(), mask1, ip2Str.c_str(), mask2);
-            
+
             inet_aton(ip1Str.c_str(), (in_addr *)&dsp.sip_ip1);
             inet_aton(ip2Str.c_str(), (in_addr *)&dsp.sip_ip2);
 
@@ -77,12 +77,32 @@ namespace ns_ip
         }
         catch (std::exception &e)
         {
-            iprint(LOG_INFO,"excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   %s\n",e.what()); 
+            iprint(LOG_INFO, "excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   %s\n", e.what());
         }
         catch (...)
         {
-            iprint(LOG_INFO,"excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   \n"); 
-            
+            iprint(LOG_INFO, "excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   \n");
+        }
+    }
+    void from_json2dummy(const json &j, dummy_device_t &dd)
+    {
+        try
+        {
+            json tmp = j.at("ip")[2];
+            string ipStr = tmp.at("ipAddress");
+            string strMask = tmp.at("netMask");
+            int mask = stoi(strMask);
+            inet_aton(ipStr.c_str(), (in_addr *)&dd.ip);
+            dd.ip = htonl(dd.ip);
+            dd.netmask = -(1 << 32 - mask);
+        }
+        catch (std::exception &e)
+        {
+            iprint(LOG_INFO, "excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   %s\n", e.what());
+        }
+        catch (...)
+        {
+            iprint(LOG_INFO, "excetion convert ipConfiguration to  \"dnat_sip_proxy_h\"   \n");
         }
     }
 }

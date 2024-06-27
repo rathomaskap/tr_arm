@@ -49,9 +49,10 @@ int ioctl_set_trace_config(int dz,struct trace_config_t *tc)
 {
 
 int retval;
+int i;
 
 printf("address of tc=%X\n",(unsigned int) tc);
-for(int i=0; i<MAX_FIFO; i++) {
+for(i=0; i<MAX_FIFO; i++) {
 	printf("i=%d   ->  %X %d\n",i,(unsigned int) &tc->delaychain[i],(unsigned int) tc->delaychain[i]);
 }
 

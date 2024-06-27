@@ -16,7 +16,6 @@ namespace ns_dl
 
     void from_json(const json &j, vector<delayLineParam> &dlp)
     {
-
         delayLineParam dlTmp;
 
         unsigned int ui;
@@ -30,13 +29,18 @@ namespace ns_dl
 
                 it.at("id").get_to(dlTmp.id);
 
-                it.at("autoRepeat").get_to(str);
-                dlTmp.autoRepeat = (str == "on") ? true : false;
+                it.at("autoRepeatOn").get_to(str);
+                dlTmp.autoRepeatOn = (str == "on") ? true : false;
+
+                it.at("autoRepeatOff").get_to(str);
+                dlTmp.autoRepeatOff = (str == "on") ? true : false;
+
 
                 it.at("direction").get_to(str);
                 dlTmp.direction = (str == "to_uas") ? true : false;
 
-                it.at("userpart").get_to(dlTmp.userpart);
+                it.at("dstUserPart").get_to(dlTmp.dstUserPart);
+                it.at("srcUserPart").get_to(dlTmp.srcUserPart);
 
                 it.at("r2sDelay").get_to(str);
                 dlTmp.r2sDelay = (str == "on") ? true : false;
@@ -146,8 +150,10 @@ namespace ns_dl
         for (auto ixdlp : dlp)
         {
             iprint(LOG_INFO, "-id:         %d\n", ixdlp.id);
-            iprint(LOG_INFO, "-userpart:   %s\n", ixdlp.userpart.c_str());
-            iprint(LOG_INFO, "-autoRepeat: %d\n", ixdlp.autoRepeat);
+            iprint(LOG_INFO, "-dstUserPart:   %s\n", ixdlp.dstUserPart.c_str());
+            iprint(LOG_INFO, "-srcUserPart:   %s\n", ixdlp.srcUserPart.c_str());
+            iprint(LOG_INFO, "-autoRepeatOn: %d\n", ixdlp.autoRepeatOn);
+            iprint(LOG_INFO, "-autoRepeatOff: %d\n", ixdlp.autoRepeatOff);
             iprint(LOG_INFO, "-direction:  %d\n", ixdlp.direction);
             iprint(LOG_INFO, "-r2sDelay:   %d\n", ixdlp.r2sDelay);
 

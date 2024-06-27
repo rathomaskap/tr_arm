@@ -18,4 +18,5 @@ using namespace nlohmann;
 namespace ns_ip
 {
     void from_json(const json &j, dnat_sip_proxy_h &dsp);
+    void from_json2dummy(const json &j, dummy_device_t &dd);
 }

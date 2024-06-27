@@ -40,10 +40,13 @@ struct delayGroup {
 
 struct delayLineParam {
     unsigned int id;
-    bool autoRepeat;        // true = on
+    bool autoRepeatOn;        // true = on
+    bool autoRepeatOff;        // true = on
+
     bool direction;         // true = to_uas
     bool r2sDelay;          
-    string userpart;
+    string dstUserPart;
+    string srcUserPart;
 
     vector<delayGroup> dgOn;    
     vector<delayGroup> dgOff;    
