@@ -1,97 +1,24 @@
-{
-    "dl": [
-        {
-            "autoRepeat": "on",
-            "direction": "to_uas",
-            "id": 1,
-            "offDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 4,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "onDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 0,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "r2sDelay": "on",
-            "userpart": "Hallo World"
-        },
-        {
-            "autoRepeat": "on",
-            "direction": "to_uas",
-            "id": 2,
-            "offDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 0,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "onDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 0,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "r2sDelay": "on",
-            "userpart": "SIP:"
-        },
-        {
-            "autoRepeat": "on",
-            "direction": "to_uas",
-            "id": 3,
-            "offDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 0,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "onDelay": [
-                {
-                    "delay": [
-                        {
-                            "id": 0,
-                            "value": "0"
-                        }
-                    ],
-                    "id": 1,
-                    "rep": 1
-                }
-            ],
-            "r2sDelay": "on",
-            "userpart": "SIP:"
-        }
-    ]
-}
+[
+    {
+        "call_id": "2908a7b2-2dc4-4a0c-9d43-2fe39f8cdb22",
+        "delayLineFound": false,
+        "dstIp": "192.168.7.1",
+        "dstPort": 8194,
+        "dstUri": "888888@192.168.7.1",
+        "id": 1,
+        "srcIp": "192.168.6.101",
+        "srcPort": 8192,
+        "srcUri": "TX_00_VCS01@192.168.6.101"
+    },
+    {
+        "call_id": "2b8f3cb6-5dfe-48f7-93d5-09a4a6c3f349",
+        "delayLineFound": false,
+        "dstIp": "192.168.7.1",
+        "dstPort": 8192,
+        "dstUri": "888888@192.168.7.1",
+        "id": 0,
+        "srcIp": "192.168.6.100",
+        "srcPort": 8192,
+        "srcUri": "TX_00_VCS00@192.168.6.100"
+    }
+]

@@ -56,7 +56,6 @@
 #include <math.h>
 
 #include "proxy.h"
-#include "myconfig.h"
 #include <pjmedia/sdp.h>
 #include <pj/list.h>
 #include <stdlib.h>
@@ -70,10 +69,15 @@
 #include <map>
 #include "pvmain.h"
 #include "sessionParam.h"
+#include <iostream>
+#include <fstream>
+#include <openssl/md5.h>
 
 using namespace std;
 using namespace sio;
 using namespace nlohmann;
+
+json softwareVersion = {{"app", "V0.0.0.0.0.0.0"}};
 
 /*
 Loglevel fuer SYSLOG
@@ -120,12 +124,12 @@ void print_call_info(ed137_call_t &call);
 void print_call_list();
 static pj_status_t init_stateless_proxy(void);
 
-
 void ev_activate_config(event &event);
 void ev_ipConfiguration(event &event);
 void ev_delayLine(event &event);
 
 void sendCallData();
+int checkId();
 
 /*********************************************************************
  * Globale Variable
@@ -139,7 +143,7 @@ std::condition_variable_any _cond;
 bool connect_finish = false;
 socket::ptr current_socket;
 
-vector<ns_dl::delayLineParam> dlp;      // aktuelle Daten, mit denen der Kernel arbeitet
+vector<ns_dl::delayLineParam> dlp; // aktuelle Daten, mit denen der Kernel arbeitet
 // vector<ns_dl::delayLineParam> newdlp;   // Werte von der Mangement Oberflaeche, um die Differenz zu dlp zu bilden
 
 class connection_listener
@@ -228,8 +232,8 @@ int main(int argc, char *argv[])
     }
 
 #else
-    puts("\nPress Ctrl-C to quit\n");^
-    for (;;)
+    puts("\nPress Ctrl-C to quit\n");
+    ^for (;;)
     {
         pj_time_val delay = {0, 0};
         pjsip_endpt_handle_events(global.endpt, &delay);
@@ -242,8 +246,16 @@ int main(int argc, char *argv[])
     h.set_open_listener(std::bind(&connection_listener::on_connected, &l));
     h.set_close_listener(std::bind(&connection_listener::on_close, &l, std::placeholders::_1));
     h.set_fail_listener(std::bind(&connection_listener::on_fail, &l));
-    //		h.connect("http://127.0.0.1:4000");
-    h.connect("http://192.168.1.98:4000");
+
+    // if (const char *env_p = std::getenv("opsEnv"))
+    if (true)
+    {
+        h.connect("http://127.0.0.1:4000");
+    }
+    else
+    {
+        h.connect("http://192.168.1.98:4000");
+    }
 
     _lock.lock();
     if (!connect_finish)
@@ -251,13 +263,46 @@ int main(int argc, char *argv[])
         _cond.wait(_lock);
     }
     _lock.unlock();
+
     current_socket = h.socket();
 
     current_socket->on("reset", ev_activate_config);
     current_socket->on("delayline", ev_delayLine);
     current_socket->on("ipConfiguration", ev_ipConfiguration);
 
+    try
+    {
+        current_socket->emit("version", softwareVersion.dump());
+    }
+    catch (...)
+    {
+        iprint(LOG_ERR, "error: emit softwareVersion\n");
+    }
+
     json st = {{"alive", "ok"}};
+
+    trace_config_t tc;
+    for (int k = 0; k < MAX_FIFO; k++)
+    {
+        tc.delaychain[k] = 8 + k * 8; // 1ms Schritte
+    }
+
+    ret = ioctl_set_trace_config(dz_net, &tc);
+
+    if (ret)
+    {
+        iprint(LOG_ERR, "error: set_trace_config\n");
+    }
+
+    int check = checkId();
+
+    if (check)
+    {
+        iprint(LOG_INFO, "check key retuned=%d\n", check);
+        fflush(stdout);
+        exit(1);
+    }
+
     for (;;)
     {
         sleep(5);
@@ -391,7 +436,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
 
                         newCall.src_port = sdp->media[0]->desc.port;
                         newCall.des_ip = pj_inet_addr(&sip_uri->host);
-                       
+
                         newCall.delayLineFound = false;
 
                         // Suche contact header
@@ -408,7 +453,7 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata)
                                 newCall.srcUri = pj_str2string(sip_uri->user) + "@" + pj_str2string(sip_uri->host);
                                 iprint(LOG_INFO, "srcUri: %s", newCall.srcUri.c_str());
 
-                                 newCall.srcUserPart = pj_str2string(sip_uri->user);
+                                newCall.srcUserPart = pj_str2string(sip_uri->user);
 
                                 // Die Port Nummer des Gerufenen steht in der response Meldung und wird spaeter ergaenzt
                                 newCall.call_id = call_id;
@@ -896,7 +941,7 @@ void ev_ipConfiguration(event &event)
         iprint(LOG_INFO, "%s", j.dump().c_str());
 
         ns_ip::from_json(j, dsp);
-        ns_ip::from_json2dummy(j,dd);
+        ns_ip::from_json2dummy(j, dd);
 
         ret = ioctl_set_sip_proxy_addr(dz_net, &dsp);
     }
@@ -919,7 +964,7 @@ void sendCallData()
     // deleate all data
     // insert new data
 
-ioctl_reset_all_sessions(dz_net);
+    ioctl_reset_all_sessions(dz_net);
 
     for (auto i = allCalls.begin(); i != allCalls.end(); i++)
     {
@@ -939,23 +984,19 @@ ioctl_reset_all_sessions(dz_net);
                 ts.on_delay.autorepeat = l.autoRepeatOn;
                 ts.on_delay.r2s_delay = l.r2sDelay;
 
-
                 ts.dummydesip = dd.ip;
-	            ts.dummydesip&= dd.netmask;
-	            ts.dummydesip|= htonl(ts.desip) & ~dd.netmask;
+                ts.dummydesip &= dd.netmask;
+                ts.dummydesip |= htonl(ts.desip) & ~dd.netmask;
                 ts.dummydesip = htonl(ts.dummydesip);
 
-                iprint(LOG_INFO,"dd.ip=%X dd.netmask=%X ts.desip=%X ts.dummydesip=%X\n",dd.ip,dd.netmask,htonl(ts.desip),ts.dummydesip);
+                iprint(LOG_INFO, "dd.ip=%X dd.netmask=%X ts.desip=%X ts.dummydesip=%X\n", dd.ip, dd.netmask, htonl(ts.desip), ts.dummydesip);
 
-	            ts.dummysrcip = dd.ip;
-	            ts.dummysrcip&= dd.netmask;
-	            ts.dummysrcip|= htonl(ts.srcip) & ~dd.netmask;
+                ts.dummysrcip = dd.ip;
+                ts.dummysrcip &= dd.netmask;
+                ts.dummysrcip |= htonl(ts.srcip) & ~dd.netmask;
                 ts.dummysrcip = htonl(ts.dummysrcip);
 
-                iprint(LOG_INFO,"dd.ip=%X dd.netmask=%X ts.srcip=%X ts.dummysrcip=%X\n",dd.ip,dd.netmask,htonl(ts.srcip),ts.dummysrcip);
-
-
-
+                iprint(LOG_INFO, "dd.ip=%X dd.netmask=%X ts.srcip=%X ts.dummysrcip=%X\n", dd.ip, dd.netmask, htonl(ts.srcip), ts.dummysrcip);
 
                 int lineOnSize = l.lineOn.size();
                 ts.on_delay.lenght = (lineOnSize < MAX_DELAY) ? lineOnSize : MAX_DELAY;
@@ -982,3 +1023,79 @@ ioctl_reset_all_sessions(dz_net);
     }
 }
 
+void print_md5_sum(unsigned char *md)
+{
+    int i;
+    string s;
+    char erg[6];
+    for (i = 0; i < MD5_DIGEST_LENGTH; i++)
+    {
+        snprintf(erg, 3, "%2.2hhX", md[i]);
+        s = s + erg;
+        iprint(LOG_INFO, "%s\n", erg);
+    }
+    iprint(LOG_INFO, "summe=%s\n", s.c_str());
+}
+
+int checkId()
+{
+    string file = "/sys/block/mmcblk0/device/cid";
+    string second = "6jnbvcf$698(&/$%§8)=7%";
+    string first;
+    string sum;
+    int i;
+    string s;
+    char erg[16];
+
+    unsigned char result[MD5_DIGEST_LENGTH];
+
+    try
+    {
+        ifstream myfile(file);
+        if (myfile.is_open())
+        {
+            myfile >> first;
+            sum = first + second;
+#ifdef CHECK_SD
+            iprint(LOG_INFO, "first : second %s : %s\n", first.c_str(), second.c_str());
+            iprint(LOG_INFO, "sum: %s\n", sum.c_str());
+#endif
+            MD5((unsigned char *)sum.c_str(), sum.length(), result);
+
+            for (i = 0; i < MD5_DIGEST_LENGTH; i++)
+            {
+                snprintf(erg, 3, "%2.2hhX", result[i]);
+                s = s + erg;
+#ifdef CHECK_SD
+                iprint(LOG_INFO, "%s\n", erg);
+#endif
+            }
+#ifdef CHECK_SD
+            iprint(LOG_INFO, "summe=%s\n", s.c_str());
+#endif
+            ifstream keyfile("key.json");
+            if (keyfile.is_open())
+            {
+                string in;
+                keyfile >> in;
+
+                json key = json::parse(in);
+
+                string jin = key.at("key");
+                if (jin == s)
+                    return 0;
+                else
+                    return -3;
+            }
+        }
+        else
+        {
+            return -2;
+        }
+    }
+    catch (...)
+    {
+        iprint(LOG_ERR, "error: can not open file\n");
+        return -1;
+    }
+}
